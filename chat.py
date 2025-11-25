@@ -1,4 +1,5 @@
 import ollama
+import sys
 import pandas as pd
 
 # loading the food dataset
@@ -20,9 +21,34 @@ def compare_foods(df):
     f2 = df[df['FoodName'].str.contains(food2, case=False, na=False)]
 
     if f1.empty or f2.empty:
-        print("One or both foods were not found in the dataset.\n")
-        return
+        fallback_prompt = f"""
+        Compare "{food1}" and "{food2}" in terms of:
+        - Calories
+        - Macronutrients (carbs, fats, protein)
+        - Micronutrients (vitamins & minerals)
+        - Glycemic index if known
+        - Overall healthiness
+        - Which is better for weight loss, muscle gain, and general health
 
+        If exact nutrient data is not available, use typical estimates
+        based on common knowledge of these foods.
+        Keep the answer clear and easy to understand.
+        """
+
+        try:
+            print("NutritionBot (AI Comparison): ", end="", flush=True)
+            for chunk in ollama.chat(
+                model="gemma3:1b",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                stream=True
+            ):
+                content = chunk["message"]["content"]
+                print(content, end="", flush=True)
+            print("\n")
+        except Exception as e:
+            print(f"⚠️ Error generating AI fallback comparison: {e}")
+        return
+    
     f1, f2 = f1.iloc[0], f2.iloc[0]
     print("\n🥕 Nutrition Comparison:")
     print(f"{f1['FoodName']} vs {f2['FoodName']}")
@@ -49,9 +75,11 @@ def compare_foods(df):
             content = chunk["message"]["content"]
             print(content, end="", flush=True)
         print("\n")
+        sys.stdout.flush()
     except Exception as e:
         print(f"⚠️ Error generating comparison summary: {e}")
-
+    
+    input("\nPress Enter to return to the main menu...")
 
 
 def chat_with_model(model_name='gemma3:1b'):
@@ -90,6 +118,103 @@ def chat_with_model(model_name='gemma3:1b'):
 
         print("\n")
         messages.append({"role": "assistant", "content": full_reply})
+    
+def meal_suggestions():
+    print("\n🥗 Personalized Meal Suggestions")
+
+    # 1. Collect user preferences
+    goal = input("What is your main goal? (weight loss / muscle gain / balanced eating / other): ").strip()
+    diet_type = input("Do you follow any diet? (vegan / vegetarian / none): ").strip()
+    allergies = input("Do you have any allergies or foods to avoid? (if none, type none): ").strip()
+    meal_type = input("What type of meal do you want suggestions for? (breakfast / lunch / dinner / snacks): ").strip()
+
+    print("\n⚙️ Generating your personalized meal plan...\n")
+
+    prompt = f"""
+    Provide a personalized {meal_type} meal suggestion.
+
+    User goal: {goal}
+    Diet type: {diet_type}
+    Allergies or foods to avoid: {allergies}
+
+    Your response MUST include:
+    - A specific meal suggestion with ingredients.
+    - Macro breakdown (approx calories, protein, carbs, fats).
+    - Micronutrients to focus on based on the goal.
+    - 5 foods to eat more of.
+    - 5 foods to avoid or limit.
+    - Keep it simple, friendly, and actionable.
+    """
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a nutrition assistant providing meal plans, macros, "
+                "micronutrients, and dietary suggestions. "
+                "Ask helpful follow-up questions and stay in context. "
+                "Provide clear, friendly advice."
+            )
+        },
+        {
+            "role": "user",
+            "content": prompt.strip()
+        }
+    ]
+
+
+    try:
+        print("NutritionBot: ", end="", flush=True)
+        full_reply = ""
+
+        stream = ollama.chat(
+            model="gemma3:1b",
+            messages=[{"role": "user", "content": prompt}],
+            stream=True
+        )
+
+        for chunk in stream:
+            content = chunk.get("message", {}).get("content", "")
+            print(content, end="", flush=True)
+            full_reply += content
+
+        print("\n")
+        messages.append({"role": "assistant", "content": full_reply})
+
+    except Exception as e:
+        print(f"⚠️ Error generating meal suggestions: {e}")
+
+    print("Type 'exit' at any time to return to the main menu.\n")
+    
+    while True:
+        follow_up = input("You: ").strip()
+        
+        if follow_up.lower() == "exit":
+            print("\nReturning to main menu...\n")
+            return
+        
+        messages.append({"role": "user", "content": follow_up})
+        
+        print("NutritionBot: ", end="", flush=True)
+        full_reply = ""
+        try:
+            stream = ollama.chat(
+                model="gemma3:1b",
+                messages=[{"role": "user", "content": follow_up}],
+                stream=True
+            )
+            for chunk in stream:
+                content = chunk["message"]["content"]
+                print(content, end="", flush=True)
+                full_reply += content
+            
+            print("\n")
+            messages.append({"role": "assistant", "content": full_reply})
+
+        except Exception as e:
+            print(f"\n⚠️ Error: {e}")
+
+        print("\n")
 
 def main():
     # main loop to get input for the chatbot
